@@ -340,7 +340,7 @@ private fun TiledPage(
  * The zoom a double tap should move to next.
  *
  * Taps walk up through [DOUBLE_TAP_STOPS] and then back to fit, so
- * repeated tapping cycles fit to 3x to 9x and around again.
+ * repeated tapping cycles fit to 3x to 6x and around again.
  *
  * @param scale Current absolute scale.
  * @param fitScale Scale at which the page fits the viewport.
