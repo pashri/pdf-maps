@@ -26,16 +26,6 @@ class TileCache(maxBytes: Int) {
         override fun sizeOf(key: TileKey, value: Bitmap): Int =
             value.byteCount
 
-        override fun entryRemoved(
-            evicted: Boolean,
-            key: TileKey,
-            oldValue: Bitmap,
-            newValue: Bitmap?,
-        ) {
-            // Tiles are never handed out after eviction, so this is
-            // safe and keeps native memory from lingering.
-            if (evicted || oldValue !== newValue) oldValue.recycle()
-        }
     }
 
     /**
@@ -56,7 +46,13 @@ class TileCache(maxBytes: Int) {
         cache.put(key, bitmap)
     }
 
-    /** Drops every cached tile and recycles the bitmaps. */
+    /**
+     * Drops every cached tile.
+     *
+     * Bitmaps are left to the garbage collector rather than
+     * recycled: a tile can still be referenced by a frame that is
+     * mid-draw, and recycling it under the draw would crash.
+     */
     fun clear() {
         cache.evictAll()
     }

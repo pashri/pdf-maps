@@ -2,16 +2,14 @@ package com.pashri.pdfmaps
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -42,13 +40,24 @@ private const val ARG_ENTRY_ID = "entryId"
  */
 class MainActivity : ComponentActivity() {
 
+    /**
+     * The PDF most recently handed to the app by a share or view
+     * intent. Held as state so a share arriving while the app is
+     * already running reaches the composition too.
+     */
+    private val incoming = mutableStateOf<Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        incoming.value = pdfUriFrom(intent)
 
         setContent {
             PdfMapsTheme {
-                PdfMapsNavHost(incoming = pdfUriFrom(intent))
+                PdfMapsNavHost(
+                    incoming = incoming.value,
+                    onConsumed = { incoming.value = null },
+                )
             }
         }
     }
@@ -61,6 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        incoming.value = pdfUriFrom(intent)
     }
 
     /**
@@ -70,30 +80,44 @@ class MainActivity : ComponentActivity() {
      * @return The URI to import, or null if there is nothing to do.
      */
     private fun pdfUriFrom(intent: Intent?): Uri? = when (intent?.action) {
-        Intent.ACTION_SEND ->
-            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-
+        Intent.ACTION_SEND -> sharedStream(intent)
         Intent.ACTION_VIEW -> intent.data
         else -> null
     }
+
+    /**
+     * Reads `EXTRA_STREAM`, using the typed overload only where the
+     * platform has it. The untyped form is deprecated but is the
+     * only option below API 33, which this app still supports.
+     *
+     * @param intent Share intent to read.
+     * @return The shared URI, or null.
+     */
+    @Suppress("DEPRECATION")
+    private fun sharedStream(intent: Intent): Uri? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
 }
 
 /**
  * The navigation graph: library, then viewer.
  *
- * @param incoming A PDF URI to import on launch, if the app was
- *   opened by a share or view intent.
+ * @param incoming A PDF URI to import, from a share or view intent.
+ * @param onConsumed Called once the URI has been handed to the
+ *   importer, so the same share is not imported twice.
  */
 @Composable
-private fun PdfMapsNavHost(incoming: Uri?) {
+private fun PdfMapsNavHost(incoming: Uri?, onConsumed: () -> Unit) {
     val controller = rememberNavController()
     val libraryViewModel: LibraryViewModel = viewModel()
-    var consumed by remember { mutableStateOf(false) }
 
     LaunchedEffect(incoming) {
-        if (incoming != null && !consumed) {
-            consumed = true
+        if (incoming != null) {
             libraryViewModel.import(incoming)
+            onConsumed()
         }
     }
 

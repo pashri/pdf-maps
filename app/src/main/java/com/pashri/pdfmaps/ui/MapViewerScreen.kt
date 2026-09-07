@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,7 +41,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pashri.pdfmaps.R
 import com.pashri.pdfmaps.render.TileRenderer
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 
 /** Highest zoom, as a multiple of the fit-to-screen scale. */
 private const val MAX_ZOOM_MULTIPLE = 8f
@@ -156,7 +154,6 @@ private fun TiledPage(
 
         // Bumped whenever a tile finishes, to trigger a redraw.
         var renderedCount by remember { mutableIntStateOf(0) }
-        val scope = rememberCoroutineScope()
 
         /** Re-clamps the offset after any zoom or pan. */
         fun applyTransform(newScale: Float, newOffset: Offset) {

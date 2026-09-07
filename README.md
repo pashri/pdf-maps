@@ -4,8 +4,9 @@ An Android app for reading PDF maps — transit networks, bike path
 networks, anything diagrammatic. Import a PDF, pick it from an
 alphabetical list, zoom and pan.
 
-Deliberately not Avenza: no GPS, no scale, no accounts, no store
-listing. The maps are diagrams, not survey sheets.
+These maps are diagrams, not survey sheets, so the app assumes
+nothing about scale or geography: no GPS, no georeferencing, no
+accounts. Just the map, as large as you want it.
 
 ## What it does
 

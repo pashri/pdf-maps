@@ -12,6 +12,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
+/**
+ * Raised when the app is not allowed to read the shared URI, as
+ * distinct from the PDF itself being unreadable.
+ *
+ * @param cause The underlying permission failure.
+ */
+private class ImportDenied(cause: SecurityException) :
+    Exception(cause)
+
 /** Fallback name when a source URI exposes no filename. */
 private const val UNTITLED = "Untitled map"
 
@@ -78,20 +87,37 @@ class MapRepository(
         val target = files.pdfFile(documentId)
         val originalName = displayNameOf(uri)
 
+        val created = mutableListOf<String>()
         try {
-            copyIn(uri, target)
-            val entries = buildEntries(documentId, target, originalName)
+            // Copying and parsing both raise SecurityException, for
+            // very different reasons, so they are caught separately:
+            // a revoked share grant must not be reported as an
+            // encrypted PDF.
+            try {
+                copyIn(uri, target)
+            } catch (error: SecurityException) {
+                throw ImportDenied(error)
+            }
+            val entries =
+                buildEntries(documentId, target, originalName, created)
             dao.insertAll(entries)
             ImportResult.Success(entries.first().displayName, entries.size)
-        } catch (error: IOException) {
-            discard(documentId)
+        } catch (error: ImportDenied) {
+            discard(documentId, created)
             ImportResult.Failure(
-                "Could not read that PDF. It may be damaged or " +
-                    "password-protected.",
+                "No longer allowed to read that file. Try sharing it " +
+                    "again.",
             )
         } catch (error: SecurityException) {
-            discard(documentId)
-            ImportResult.Failure("No permission to read that file.")
+            // PdfRenderer reports an encrypted document this way.
+            discard(documentId, created)
+            ImportResult.Failure("That PDF is password-protected.")
+        } catch (error: IOException) {
+            discard(documentId, created)
+            ImportResult.Failure(
+                "Could not read that PDF. It may be damaged or not a " +
+                    "PDF at all.",
+            )
         }
     }
 
@@ -116,6 +142,8 @@ class MapRepository(
      * @param documentId Id of the stored PDF.
      * @param file The stored PDF.
      * @param originalName Filename as imported.
+     * @param created Collects the ids of every entry whose thumbnail
+     *   has been written, so a later failure can clean them up.
      * @return One entry per page, in page order.
      * @throws IOException If the PDF cannot be opened or rendered.
      */
@@ -123,12 +151,14 @@ class MapRepository(
         documentId: String,
         file: File,
         originalName: String,
+        created: MutableList<String>,
     ): List<MapEntry> = PdfDocumentSource(file).use { source ->
         val pageCount = source.pageCount()
         val stem = originalName.substringBeforeLast('.', originalName)
 
         (0 until pageCount).map { pageIndex ->
             val entryId = UUID.randomUUID().toString()
+            created += entryId
             ThumbnailGenerator.writeThumbnail(
                 source = source,
                 pageIndex = pageIndex,
@@ -163,12 +193,15 @@ class MapRepository(
         else "$stem (${pageIndex + 1}/$pageCount)"
 
     /**
-     * Removes every file written during a failed import.
+     * Removes every file written during a failed import, so a
+     * rejected PDF leaves nothing behind on disk.
      *
      * @param documentId Id of the abandoned document.
+     * @param entryIds Ids of any thumbnails already written.
      */
-    private fun discard(documentId: String) {
+    private fun discard(documentId: String, entryIds: List<String>) {
         files.deletePdf(documentId)
+        entryIds.forEach(files::deleteThumb)
     }
 
     /**
