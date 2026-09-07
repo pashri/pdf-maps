@@ -8,6 +8,16 @@ These maps are diagrams, not survey sheets, so the app assumes
 nothing about scale or geography: no GPS, no georeferencing, no
 accounts. Just the map, as large as you want it.
 
+## Install
+
+Grab the APK from the [latest release][releases] and open it on your
+phone. Android will ask you to allow installing from unknown
+sources, since this is not distributed through the Play Store.
+
+Requires Android 8.0 (API 26) or newer.
+
+[releases]: https://github.com/pashri/pdf-maps/releases/latest
+
 ## What it does
 
 - **Import** — share or "open with" any PDF, or tap `+` to pick one.
