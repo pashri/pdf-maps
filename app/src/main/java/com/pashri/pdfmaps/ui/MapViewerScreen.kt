@@ -1,6 +1,9 @@
 package com.pashri.pdfmaps.ui
 
 import android.graphics.Rect
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,12 +45,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pashri.pdfmaps.R
 import com.pashri.pdfmaps.render.TileRenderer
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /** Highest zoom, as a multiple of the fit-to-screen scale. */
-private const val MAX_ZOOM_MULTIPLE = 8f
+private const val MAX_ZOOM_MULTIPLE = 24f
 
-/** Zoom applied by a double tap, as a multiple of fit scale. */
-private const val DOUBLE_TAP_ZOOM = 3f
+/**
+ * The zoom stops a double tap cycles through, as multiples of the
+ * fit-to-screen scale. Tapping past the last stop returns to fit.
+ */
+private val DOUBLE_TAP_STOPS = listOf(3f, 6f)
+
+/** How close two scales must be to count as the same zoom stop. */
+private const val STOP_TOLERANCE = 1.05f
+
+/** Duration of the double-tap zoom animation, in milliseconds. */
+private const val ZOOM_ANIMATION_MS = 280
 
 /**
  * Full-screen viewer for one map page.
@@ -155,6 +170,9 @@ private fun TiledPage(
         // Bumped whenever a tile finishes, to trigger a redraw.
         var renderedCount by remember { mutableIntStateOf(0) }
 
+        val scope = rememberCoroutineScope()
+        var zoomAnimation by remember { mutableStateOf<Job?>(null) }
+
         /** Re-clamps the offset after any zoom or pan. */
         fun applyTransform(newScale: Float, newOffset: Offset) {
             scale = newScale.coerceIn(fitScale, maxScale)
@@ -166,6 +184,42 @@ private fun TiledPage(
                 pageWidth = pageWidth,
                 pageHeight = pageHeight,
             )
+        }
+
+        /**
+         * Eases to a zoom level while holding [anchor] still, so
+         * the point under the finger stays under the finger.
+         */
+        fun animateZoomTo(target: Float, anchor: Offset) {
+            zoomAnimation?.cancel()
+            zoomAnimation = scope.launch {
+                val fromScale = scale
+                val fromOffset = offset
+                val toScale = target.coerceIn(fitScale, maxScale)
+                val factor = toScale / fromScale
+                val toOffset = clampOffset(
+                    offset = (fromOffset - anchor) * factor + anchor,
+                    scale = toScale,
+                    viewWidth = viewWidth,
+                    viewHeight = viewHeight,
+                    pageWidth = pageWidth,
+                    pageHeight = pageHeight,
+                )
+                animate(
+                    initialValue = 0f,
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = ZOOM_ANIMATION_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { fraction, _ ->
+                    scale = fromScale + (toScale - fromScale) * fraction
+                    offset = Offset(
+                        fromOffset.x + (toOffset.x - fromOffset.x) * fraction,
+                        fromOffset.y + (toOffset.y - fromOffset.y) * fraction,
+                    )
+                }
+            }
         }
 
         val level = renderer.levelFor(scale)
@@ -225,19 +279,18 @@ private fun TiledPage(
                 .pointerInput(fitScale) {
                     detectTapGestures(
                         onDoubleTap = { tap ->
-                            val target =
-                                if (scale > fitScale * 1.05f) fitScale
-                                else fitScale * DOUBLE_TAP_ZOOM
-                            val factor = target / scale
-                            applyTransform(
-                                target,
-                                (offset - tap) * factor + tap,
+                            animateZoomTo(
+                                nextZoomStop(scale, fitScale),
+                                tap,
                             )
                         },
                     )
                 }
                 .pointerInput(fitScale) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
+                        // A finger on the screen wins over an
+                        // in-flight double-tap animation.
+                        zoomAnimation?.cancel()
                         val target =
                             (scale * zoom).coerceIn(fitScale, maxScale)
                         val factor = target / scale
@@ -281,6 +334,23 @@ private fun TiledPage(
             }
         }
     }
+}
+
+/**
+ * The zoom a double tap should move to next.
+ *
+ * Taps walk up through [DOUBLE_TAP_STOPS] and then back to fit, so
+ * repeated tapping cycles fit to 3x to 9x and around again.
+ *
+ * @param scale Current absolute scale.
+ * @param fitScale Scale at which the page fits the viewport.
+ * @return The absolute scale to animate to.
+ */
+internal fun nextZoomStop(scale: Float, fitScale: Float): Float {
+    val next = DOUBLE_TAP_STOPS.firstOrNull { stop ->
+        scale < fitScale * stop / STOP_TOLERANCE
+    }
+    return fitScale * (next ?: 1f)
 }
 
 /**

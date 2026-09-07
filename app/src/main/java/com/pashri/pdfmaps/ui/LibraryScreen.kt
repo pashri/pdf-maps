@@ -3,6 +3,7 @@ package com.pashri.pdfmaps.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +18,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -174,7 +179,7 @@ private fun MapList(
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         if (state.starred.isNotEmpty()) {
-            item { SectionHeader(stringResource(R.string.starred_header)) }
+            item { SectionHeader(stringResource(R.string.favourites_header)) }
             items(state.starred, key = { it.id }) { entry ->
                 MapRow(entry, thumbnailPath(entry), onOpen, onLongPress)
             }
@@ -242,7 +247,8 @@ private fun MapRow(
             if (entry.isStarred) {
                 Icon(
                     Icons.Default.Star,
-                    contentDescription = stringResource(R.string.star),
+                    contentDescription =
+                        stringResource(R.string.favourite),
                     tint = MaterialTheme.colorScheme.secondary,
                 )
             }
@@ -297,20 +303,26 @@ private fun MapActionsDialog(
         title = { Text(entry.displayName) },
         text = {
             Column {
-                TextButton(onClick = onRename) {
-                    Text(stringResource(R.string.rename))
-                }
-                TextButton(onClick = onToggleStar) {
-                    Text(
-                        stringResource(
-                            if (entry.isStarred) R.string.unstar
-                            else R.string.star,
-                        ),
-                    )
-                }
-                TextButton(onClick = onDelete) {
-                    Text(stringResource(R.string.delete))
-                }
+                ActionRow(
+                    icon = Icons.Default.Edit,
+                    label = stringResource(R.string.rename),
+                    onClick = onRename,
+                )
+                ActionRow(
+                    icon =
+                        if (entry.isStarred) Icons.Default.StarBorder
+                        else Icons.Default.Star,
+                    label = stringResource(
+                        if (entry.isStarred) R.string.unfavourite
+                        else R.string.favourite,
+                    ),
+                    onClick = onToggleStar,
+                )
+                ActionRow(
+                    icon = Icons.Default.Delete,
+                    label = stringResource(R.string.delete),
+                    onClick = onDelete,
+                )
             }
         },
         confirmButton = {
@@ -319,6 +331,42 @@ private fun MapActionsDialog(
             }
         },
     )
+}
+
+/**
+ * One action in the long-press menu: a full-width row with the icon
+ * and label on a shared left margin, so the three actions line up
+ * regardless of how long their labels are.
+ *
+ * @param icon Leading icon.
+ * @param label Action text.
+ * @param onClick Called when the row is tapped.
+ */
+@Composable
+private fun ActionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 14.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 20.dp),
+        )
+    }
 }
 
 /**

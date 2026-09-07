@@ -25,11 +25,14 @@ Requires Android 8.0 (API 26) or newer.
   unaffected by the original being moved or deleted.
 - **One entry per page** — a 3-page PDF becomes 3 maps, named
   `Something (1/3)` … `(3/3)`. Single-page PDFs get no suffix.
-- **Library** — starred maps pinned on top, alphabetical within each
-  group, with thumbnails. Long-press to rename, star or delete.
-- **Viewer** — pinch, pan and double-tap. Tiles are re-rendered from
-  the PDF at the current zoom level, so text stays sharp all the way
-  in. Zoom and position are remembered per map.
+- **Library** — favourites pinned on top, alphabetical within each
+  group, with thumbnails. Long-press to rename, favourite or
+  delete.
+- **Viewer** — pinch, pan and double-tap. Double tapping eases
+  through two zoom stops, 3x then 6x, before returning to fit.
+  Tiles are re-rendered from the PDF at the current zoom level, so
+  text stays sharp all the way in to the 24x limit. Zoom and
+  position are remembered per map.
 
 ## Building
 

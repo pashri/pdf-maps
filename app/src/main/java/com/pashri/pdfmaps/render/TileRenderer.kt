@@ -13,7 +13,7 @@ import kotlinx.coroutines.sync.withLock
 const val TILE_SIZE = 512
 
 /** Highest zoom level rendered; level N is 2^N times fit scale. */
-const val MAX_TILE_LEVEL = 4
+const val MAX_TILE_LEVEL = 5
 
 /**
  * Turns a viewport into a set of rendered tiles.
