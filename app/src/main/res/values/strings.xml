@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PDF Maps</string>
+    <string name="library_title">Maps</string>
+    <string name="starred_header">Starred</string>
+    <string name="all_maps_header">All maps</string>
+    <string name="add_map">Add a map</string>
+    <string name="empty_title">No maps yet</string>
+    <string name="empty_body">Tap + to pick a PDF, or share one to
+        PDF Maps from any app.</string>
+    <string name="rename">Rename</string>
+    <string name="star">Star</string>
+    <string name="unstar">Unstar</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="back">Back</string>
+    <string name="delete_title">Delete map?</string>
+    <string name="delete_body">This removes it from the library.
+        The original file is untouched.</string>
+    <string name="importing">Importing…</string>
+</resources>

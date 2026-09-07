@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A folded map: three panels with a route running across. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30 L28,34 L28,78 L36,74 Z" />
+    <path
+        android:fillColor="#E8EEF6"
+        android:pathData="M40,30 L54,34 L54,78 L40,74 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M58,34 L72,30 L72,74 L58,78 Z" />
+    <path
+        android:strokeColor="#F2A65A"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M32,68 C44,64 44,48 56,44 C64,41 66,38 68,36" />
+</vector>
