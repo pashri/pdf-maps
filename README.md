@@ -26,8 +26,8 @@ Requires Android 8.0 (API 26) or newer.
 - **One entry per page** — a 3-page PDF becomes 3 maps, named
   `Something (1/3)` … `(3/3)`. Single-page PDFs get no suffix.
 - **Library** — favourites pinned on top, alphabetical within each
-  group, with thumbnails. Long-press to rename, favourite or
-  delete.
+  group, with thumbnails. Long-press a row, or use its overflow
+  button, to rename, favourite or delete.
 - **Viewer** — pinch, pan and double-tap. Double tapping eases
   through two zoom stops, 3x then 6x, before returning to fit.
   Tiles are re-rendered from the PDF at the current zoom level, so
@@ -60,7 +60,8 @@ only appear under fast panning.
 `2^N` times fit-to-screen scale) rather than by continuous scale, so
 panning at a steady zoom reuses cached tiles. Level 0 tiles are drawn
 underneath as an underlay, so zooming never shows blank space while
-sharper tiles are still rendering. `TileCache` is an LRU bounded to a
+sharper tiles are still rendering, and the next-coarser level is
+drawn between the two wherever it is still cached. `TileCache` is an LRU bounded to a
 quarter of the device's heap budget.
 
 ## Layout
