@@ -10,7 +10,10 @@ import android.util.Size
 import java.io.Closeable
 import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -34,8 +37,13 @@ class PdfDocumentSource(
 ) : Closeable {
 
     private val mutex = Mutex()
+
+    /** Outlives the caller of [close], which cannot wait for it. */
+    private val teardownScope = CoroutineScope(SupervisorJob() + dispatcher)
+
     private var descriptor: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
+    private var closed = false
 
     /**
      * Opens the document if it is not already open.
@@ -115,26 +123,44 @@ class PdfDocumentSource(
         }
 
         mutex.withLock {
-            openLocked().openPage(pageIndex).use { page ->
-                page.render(
-                    bitmap,
-                    null,
-                    matrix,
-                    PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
-                )
+            // The viewer can be torn down while this is queued.
+            // Reopening the document here would resurrect a session
+            // whose bitmap nothing will ever draw.
+            if (!closed) {
+                openLocked().openPage(pageIndex).use { page ->
+                    page.render(
+                        bitmap,
+                        null,
+                        matrix,
+                        PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
+                    )
+                }
             }
         }
         bitmap
     }
 
     /**
-     * Closes the renderer and its file descriptor. Safe to call
-     * more than once.
+     * Closes the renderer and its file descriptor.
+     *
+     * The close is deferred behind the same mutex the renders take,
+     * so a tile already being rendered finishes first. Freeing the
+     * native document underneath a live render crashes the process,
+     * which is what leaving a large map used to do: its tiles take
+     * long enough that one is almost always still in flight.
+     *
+     * Returns before the close has happened. Safe to call more than
+     * once.
      */
     override fun close() {
-        renderer?.close()
-        renderer = null
-        descriptor?.close()
-        descriptor = null
+        teardownScope.launch {
+            mutex.withLock {
+                closed = true
+                renderer?.close()
+                renderer = null
+                descriptor?.close()
+                descriptor = null
+            }
+        }
     }
 }
