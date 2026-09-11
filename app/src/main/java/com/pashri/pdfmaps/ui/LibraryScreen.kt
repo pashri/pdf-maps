@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -27,8 +30,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -115,7 +120,7 @@ fun LibraryScreen(
                     state = state,
                     thumbnailPath = viewModel::thumbnailPath,
                     onOpen = { onOpenMap(it.id) },
-                    onLongPress = { sheetFor = it },
+                    onShowActions = { sheetFor = it },
                 )
             }
 
@@ -128,7 +133,7 @@ fun LibraryScreen(
     }
 
     sheetFor?.let { entry ->
-        MapActionsDialog(
+        MapActionsSheet(
             entry = entry,
             onRename = { renaming = entry; sheetFor = null },
             onToggleStar = {
@@ -168,20 +173,20 @@ fun LibraryScreen(
  * @param state Current library contents.
  * @param thumbnailPath Resolves an entry's thumbnail file path.
  * @param onOpen Called when a row is tapped.
- * @param onLongPress Called when a row is long-pressed.
+ * @param onShowActions Called to open a row's action sheet.
  */
 @Composable
 private fun MapList(
     state: LibraryUiState,
     thumbnailPath: (MapEntry) -> String,
     onOpen: (MapEntry) -> Unit,
-    onLongPress: (MapEntry) -> Unit,
+    onShowActions: (MapEntry) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         if (state.starred.isNotEmpty()) {
             item { SectionHeader(stringResource(R.string.favourites_header)) }
             items(state.starred, key = { it.id }) { entry ->
-                MapRow(entry, thumbnailPath(entry), onOpen, onLongPress)
+                MapRow(entry, thumbnailPath(entry), onOpen, onShowActions)
             }
             if (state.others.isNotEmpty()) {
                 item {
@@ -190,7 +195,7 @@ private fun MapList(
             }
         }
         items(state.others, key = { it.id }) { entry ->
-            MapRow(entry, thumbnailPath(entry), onOpen, onLongPress)
+            MapRow(entry, thumbnailPath(entry), onOpen, onShowActions)
         }
     }
 }
@@ -221,7 +226,7 @@ private fun SectionHeader(text: String) {
  * @param entry Entry to show.
  * @param thumbnailPath Path to the entry's thumbnail PNG.
  * @param onOpen Called when the row is tapped.
- * @param onLongPress Called when the row is long-pressed.
+ * @param onShowActions Called to open the row's action sheet.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -229,7 +234,7 @@ private fun MapRow(
     entry: MapEntry,
     thumbnailPath: String,
     onOpen: (MapEntry) -> Unit,
-    onLongPress: (MapEntry) -> Unit,
+    onShowActions: (MapEntry) -> Unit,
 ) {
     ListItem(
         headlineContent = { Text(entry.displayName) },
@@ -239,23 +244,32 @@ private fun MapRow(
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(width = 80.dp, height = 56.dp)
                     .clip(RoundedCornerShape(4.dp)),
             )
         },
         trailingContent = {
-            if (entry.isStarred) {
-                Icon(
-                    Icons.Default.Star,
-                    contentDescription =
-                        stringResource(R.string.favourite),
-                    tint = MaterialTheme.colorScheme.secondary,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (entry.isStarred) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription =
+                            stringResource(R.string.favourite),
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                IconButton(onClick = { onShowActions(entry) }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription =
+                            stringResource(R.string.more_actions),
+                    )
+                }
             }
         },
         modifier = Modifier.combinedClickable(
             onClick = { onOpen(entry) },
-            onLongClick = { onLongPress(entry) },
+            onLongClick = { onShowActions(entry) },
         ),
     )
 }
@@ -282,91 +296,78 @@ private fun EmptyLibrary() {
 }
 
 /**
- * Long-press actions for one map.
+ * Actions for one map, reached by long-press or the row's overflow
+ * button.
  *
  * @param entry Entry the actions apply to.
  * @param onRename Called to start renaming.
  * @param onToggleStar Called to star or unstar.
  * @param onDelete Called to start deleting.
- * @param onDismiss Called when the dialog is dismissed.
+ * @param onDismiss Called when the sheet is dismissed.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MapActionsDialog(
+private fun MapActionsSheet(
     entry: MapEntry,
     onRename: () -> Unit,
     onToggleStar: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(entry.displayName) },
-        text = {
-            Column {
-                ActionRow(
-                    icon = Icons.Default.Edit,
-                    label = stringResource(R.string.rename),
-                    onClick = onRename,
-                )
-                ActionRow(
-                    icon =
-                        if (entry.isStarred) Icons.Default.StarBorder
-                        else Icons.Default.Star,
-                    label = stringResource(
-                        if (entry.isStarred) R.string.unfavourite
-                        else R.string.favourite,
-                    ),
-                    onClick = onToggleStar,
-                )
-                ActionRow(
-                    icon = Icons.Default.Delete,
-                    label = stringResource(R.string.delete),
-                    onClick = onDelete,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
-    )
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = entry.displayName,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        SheetAction(
+            icon = Icons.Default.Edit,
+            label = stringResource(R.string.rename),
+            onClick = onRename,
+        )
+        SheetAction(
+            icon =
+                if (entry.isStarred) Icons.Default.StarBorder
+                else Icons.Default.Star,
+            label = stringResource(
+                if (entry.isStarred) R.string.unfavourite
+                else R.string.favourite,
+            ),
+            onClick = onToggleStar,
+        )
+        SheetAction(
+            icon = Icons.Default.Delete,
+            label = stringResource(R.string.delete),
+            onClick = onDelete,
+        )
+        Spacer(Modifier.navigationBarsPadding())
+    }
 }
 
 /**
- * One action in the long-press menu: a full-width row with the icon
- * and label on a shared left margin, so the three actions line up
- * regardless of how long their labels are.
+ * One action in the sheet.
  *
  * @param icon Leading icon.
  * @param label Action text.
  * @param onClick Called when the row is tapped.
  */
 @Composable
-private fun ActionRow(
+private fun SheetAction(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 14.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 20.dp),
-        )
-    }
+    ListItem(
+        headlineContent = { Text(label) },
+        leadingContent = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 /**
