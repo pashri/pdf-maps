@@ -286,6 +286,27 @@ private fun TiledPage(
             pageWidth = pageWidth,
             pageHeight = pageHeight,
         )
+        // One level coarser, drawn only where it is already cached
+        // from zooming in. Level 0 alone is magnified up to 24x
+        // while sharp tiles render, which reads as a smear rather
+        // than a soft preview. Level 1's coarser level is level 0,
+        // which is already drawn.
+        val midTiles = if (level > 1) {
+            renderer.tilesFor(
+                level = level - 1,
+                visible = visibleRegion(
+                    offset = offset,
+                    scale = scale,
+                    levelScale = renderer.scaleForLevel(level - 1),
+                    viewWidth = viewWidth,
+                    viewHeight = viewHeight,
+                ),
+                pageWidth = pageWidth,
+                pageHeight = pageHeight,
+            )
+        } else {
+            emptyList()
+        }
 
         LaunchedEffect(tiles, baseTiles) {
             // Level 0 first: it is the underlay that stops the
@@ -331,7 +352,9 @@ private fun TiledPage(
 
             drawRect(Color.White)
 
-            for (key in baseTiles + tiles) {
+            // Back to front. midTiles shows only where the sharp
+            // tile has not landed yet; uncached keys are skipped.
+            for (key in baseTiles + midTiles + tiles) {
                 val bitmap = renderer.cached(key) ?: continue
                 val bounds =
                     renderer.boundsOf(key, pageWidth, pageHeight)
@@ -353,7 +376,7 @@ private fun TiledPage(
                         width.roundToInt().coerceAtLeast(1),
                         height.roundToInt().coerceAtLeast(1),
                     ),
-                    filterQuality = FilterQuality.Low,
+                    filterQuality = FilterQuality.Medium,
                 )
             }
         }
