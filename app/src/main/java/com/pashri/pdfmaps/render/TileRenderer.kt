@@ -6,8 +6,6 @@ import kotlin.math.ceil
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.pow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /** Edge length of a square tile, in pixels. */
 const val TILE_SIZE = 512
@@ -35,8 +33,7 @@ class TileRenderer(
     private val cache: TileCache,
 ) {
 
-    private val inFlight = mutableSetOf<TileKey>()
-    private val guard = Mutex()
+    private val claims = TileClaims()
 
     /**
      * Chooses the zoom level to render at for a given scale.
@@ -148,24 +145,20 @@ class TileRenderer(
         pageWidth: Int,
         pageHeight: Int,
     ): Boolean {
-        val claimed = guard.withLock {
-            if (cache[key] != null || key in inFlight) false
-            else inFlight.add(key)
-        }
-        if (!claimed) return false
+        if (cache[key] != null) return false
+        if (!claims.claim(key)) return false
 
         try {
             val bounds = boundsOf(key, pageWidth, pageHeight)
             if (bounds.isEmpty) return false
-            val bitmap = source.renderRegion(
+            cache[key] = source.renderRegion(
                 pageIndex = key.pageIndex,
                 region = bounds,
                 scale = scaleForLevel(key.level),
             )
-            guard.withLock { cache[key] = bitmap }
             return true
         } finally {
-            guard.withLock { inFlight.remove(key) }
+            claims.release(key)
         }
     }
 }
