@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,7 +30,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pashri.pdfmaps.R
 import com.pashri.pdfmaps.render.TileRenderer
@@ -64,6 +67,12 @@ private const val STOP_TOLERANCE = 1.05f
 private const val ZOOM_ANIMATION_MS = 280
 
 /**
+ * Opacity of the disc behind the back arrow. Enough to separate it
+ * from map content without hiding what is underneath.
+ */
+private const val BACK_SCRIM_ALPHA = 0.7f
+
+/**
  * Full-screen viewer for one map page.
  *
  * @param onBack Called when the user navigates back.
@@ -75,6 +84,15 @@ fun MapViewerScreen(
     viewModel: MapViewerViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Backgrounding is the moment before the process may be killed,
+    // and disposal covers navigating back.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        viewModel.saveViewport()
+    }
+    DisposableEffect(Unit) {
+        onDispose { viewModel.saveViewport() }
+    }
 
     Box(
         Modifier
@@ -93,13 +111,21 @@ fun MapViewerScreen(
 
             is ViewerUiState.Ready -> TiledPage(
                 state = current,
-                onViewportChanged = viewModel::saveViewport,
+                savedViewport = { viewModel.viewport },
+                onViewportChanged = viewModel::onViewportChanged,
             )
         }
 
         IconButton(
             onClick = onBack,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(8.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                        .copy(alpha = BACK_SCRIM_ALPHA),
+                    shape = CircleShape,
+                ),
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -117,12 +143,17 @@ fun MapViewerScreen(
  * pixels per PDF point and [offset] is a pixel translation.
  *
  * @param state Open document and page metrics.
- * @param onViewportChanged Called to persist zoom and centre.
+ * @param savedViewport Reads the last known position. A function
+ *   rather than a value because it is re-read when the viewport is
+ *   re-measured, which is how rotation keeps the user in place.
+ * @param onViewportChanged Called with every change of zoom or
+ *   centre.
  */
 @Composable
 private fun TiledPage(
     state: ViewerUiState.Ready,
-    onViewportChanged: (Float, Float, Float) -> Unit,
+    savedViewport: () -> Viewport?,
+    onViewportChanged: (Viewport) -> Unit,
 ) {
     val pageWidth = state.pageSize.width
     val pageHeight = state.pageSize.height
@@ -146,18 +177,19 @@ private fun TiledPage(
         }
 
         var scale by remember(state.entry.id, fitScale) {
+            val saved = savedViewport()?.scale ?: state.entry.scale
             mutableFloatStateOf(
-                state.entry.scale?.coerceIn(fitScale, maxScale)
-                    ?: fitScale,
+                saved?.coerceIn(fitScale, maxScale) ?: fitScale,
             )
         }
         var offset by remember(state.entry.id, fitScale) {
+            val saved = savedViewport()
             mutableStateOf(
                 centredOffset(
                     scale = scale,
-                    centerX = state.entry.centerX
+                    centerX = saved?.centerX ?: state.entry.centerX
                         ?: (pageWidth / 2f),
-                    centerY = state.entry.centerY
+                    centerY = saved?.centerY ?: state.entry.centerY
                         ?: (pageHeight / 2f),
                     viewWidth = viewWidth,
                     viewHeight = viewHeight,
@@ -183,6 +215,9 @@ private fun TiledPage(
                 viewHeight = viewHeight,
                 pageWidth = pageWidth,
                 pageHeight = pageHeight,
+            )
+            onViewportChanged(
+                viewportOf(scale, offset, viewWidth, viewHeight),
             )
         }
 
@@ -217,6 +252,9 @@ private fun TiledPage(
                     offset = Offset(
                         fromOffset.x + (toOffset.x - fromOffset.x) * fraction,
                         fromOffset.y + (toOffset.y - fromOffset.y) * fraction,
+                    )
+                    onViewportChanged(
+                        viewportOf(scale, offset, viewWidth, viewHeight),
                     )
                 }
             }
@@ -256,20 +294,6 @@ private fun TiledPage(
                 if (renderer.render(key, pageWidth, pageHeight)) {
                     renderedCount++
                 }
-            }
-        }
-
-        val latestViewport = rememberUpdatedState(
-            Triple(
-                scale,
-                (viewWidth / 2f - offset.x) / scale,
-                (viewHeight / 2f - offset.y) / scale,
-            ),
-        )
-        DisposableEffect(Unit) {
-            onDispose {
-                val (savedScale, cx, cy) = latestViewport.value
-                onViewportChanged(savedScale, cx, cy)
             }
         }
 
@@ -335,6 +359,27 @@ private fun TiledPage(
         }
     }
 }
+
+/**
+ * Describes the current view as a zoom and a page point, which is
+ * the form that survives a change of viewport size.
+ *
+ * @param scale Current absolute scale.
+ * @param offset Current pixel translation.
+ * @param viewWidth Viewport width in pixels.
+ * @param viewHeight Viewport height in pixels.
+ * @return The page point at the centre of the viewport, with zoom.
+ */
+private fun viewportOf(
+    scale: Float,
+    offset: Offset,
+    viewWidth: Float,
+    viewHeight: Float,
+): Viewport = Viewport(
+    scale = scale,
+    centerX = (viewWidth / 2f - offset.x) / scale,
+    centerY = (viewHeight / 2f - offset.y) / scale,
+)
 
 /**
  * The zoom a double tap should move to next.
